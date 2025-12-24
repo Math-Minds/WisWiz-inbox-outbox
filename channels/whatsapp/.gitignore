@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+build/
+dist/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Data (contains private messages)
+data/contacts/
+data/chats/
+data/outbox/
+data/media/
+
+# Keep data structure
+!data/.gitkeep
+!data/contacts/.gitkeep
+!data/chats/.gitkeep
+!data/outbox/.gitkeep
+!data/outbox/pending/.gitkeep
+!data/outbox/sent/.gitkeep
+!data/media/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc
+*.pem
