@@ -15,7 +15,16 @@ import {
 } from './dedup';
 import { readJson, writeJson, exists } from './storage';
 
-const OUR_SENDER_NAME = 'WisWiz';
+const DEFAULT_SENDER_NAME = 'WisWiz';
+
+export interface SyncOptions {
+  /** Skip chats with unknown phone numbers (no auto-create). Default: false */
+  skipUnknown?: boolean;
+  /** Sender name for outbound messages. Default: 'WisWiz' */
+  senderName?: string;
+  /** Source label for outbound messages, shown in CRM (e.g. 'philip_persoonlijk') */
+  sourceLabel?: string;
+}
 
 interface IndexData {
   by_identifier: Record<string, string>;
@@ -28,6 +37,7 @@ interface InfluencerMessage {
   sender: string;
   text: string;
   direction: 'inbound' | 'outbound';
+  source?: string; // e.g. 'philip_persoonlijk' — only set for non-default accounts
 }
 
 interface WhatsAppData {
@@ -127,7 +137,8 @@ async function loadWhatsAppData(slug: string): Promise<WhatsAppData> {
   }
 }
 
-async function processBatch(messages: proto.IWebMessageInfo[], source: string): Promise<void> {
+async function processBatch(messages: proto.IWebMessageInfo[], source: string, options: SyncOptions = {}): Promise<void> {
+  const { skipUnknown = false, senderName = DEFAULT_SENDER_NAME, sourceLabel } = options;
   const syncState = await loadSyncState();
   let index: IndexData;
   try {
@@ -173,6 +184,7 @@ async function processBatch(messages: proto.IWebMessageInfo[], source: string): 
 
     let slug = index.by_identifier[phoneKey(indexPhone)];
     if (!slug) {
+      if (skipUnknown) continue; // Skip unknown contacts for personal accounts
       const name = pushName || filePhone;
       const firstTs = Number(newMsgs[0].messageTimestamp || 0);
       const firstDate = formatTimestamp(firstTs).split('T')[0];
@@ -191,9 +203,10 @@ async function processBatch(messages: proto.IWebMessageInfo[], source: string): 
 
       const transformed: InfluencerMessage = {
         timestamp: formatTimestamp(ts),
-        sender: fromMe ? OUR_SENDER_NAME : (pushName || indexPhone),
+        sender: fromMe ? senderName : (pushName || indexPhone),
         text,
         direction: fromMe ? 'outbound' : 'inbound',
+        ...(sourceLabel ? { source: sourceLabel } : {}),
       };
 
       if (!isDuplicate(waData.messages, transformed)) {
@@ -223,24 +236,26 @@ async function processBatch(messages: proto.IWebMessageInfo[], source: string): 
   }
 }
 
-export function processHistorySync(sock: WASocket): void {
+export function processHistorySync(sock: WASocket, options?: SyncOptions): void {
+  const label = options?.sourceLabel || 'WisWiz';
   sock.ev.on('messaging-history.set', async ({ messages, progress }) => {
-    console.log(`📥 History sync: ${messages.length} berichten (${progress ?? '?'}%)`);
+    console.log(`📥 [${label}] History sync: ${messages.length} berichten (${progress ?? '?'}%)`);
     if (messages.length > 0) {
-      await processBatch(messages, 'History sync');
+      await processBatch(messages, 'History sync', options);
     }
   });
 }
 
-export function processIncomingMessages(sock: WASocket): void {
+export function processIncomingMessages(sock: WASocket, options?: SyncOptions): void {
+  const label = options?.sourceLabel || 'WisWiz';
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type === 'notify') {
-      console.log(`📨 Nieuw bericht ontvangen: ${messages.length}`);
-      await processBatch(messages, 'Real-time');
+      console.log(`📨 [${label}] Nieuw bericht ontvangen: ${messages.length}`);
+      await processBatch(messages, 'Real-time', options);
     } else {
       if (messages.length > 0) {
-        console.log(`📨 Backfill: ${messages.length} berichten`);
-        await processBatch(messages, 'Backfill');
+        console.log(`📨 [${label}] Backfill: ${messages.length} berichten`);
+        await processBatch(messages, 'Backfill', options);
       }
     }
   });

@@ -36,17 +36,40 @@ async function main() {
     console.log(`   Health check: http://localhost:${port}\n`);
   });
 
-  // Connect and listen
-  console.log('🔗 Verbinden met WhatsApp...');
+  // Connect WisWiz WhatsApp (primary — business account)
+  console.log('🔗 [WisWiz] Verbinden met WhatsApp...');
 
   startWhatsApp({
     onConnected: (sock) => {
       connected = true;
       processHistorySync(sock);
       processIncomingMessages(sock);
-      console.log('👂 Luisteren naar berichten...\n');
+      console.log('👂 [WisWiz] Luisteren naar berichten...\n');
     },
   });
+
+  // Connect Philip's personal WhatsApp (secondary — only syncs known influencers)
+  if (process.env.PHILIP_WA_ENABLED === 'true') {
+    console.log('🔗 [Philip] Verbinden met persoonlijke WhatsApp...');
+
+    const philipSyncOptions = {
+      skipUnknown: true,
+      senderName: 'Philip',
+      sourceLabel: 'philip_persoonlijk',
+    };
+
+    startWhatsApp({
+      onConnected: (sock) => {
+        processHistorySync(sock, philipSyncOptions);
+        processIncomingMessages(sock, philipSyncOptions);
+        console.log('👂 [Philip] Luisteren naar berichten (alleen bekende influencers)...\n');
+      },
+    }, {
+      accountName: 'philip',
+      label: 'Philip',
+      writeStatus: false,
+    });
+  }
 
   // Email sync — onafhankelijk van WhatsApp
   startEmailSync();

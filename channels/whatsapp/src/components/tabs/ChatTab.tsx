@@ -58,6 +58,7 @@ export function ChatTab({ slug, telefoon }: ChatTabProps) {
         ) : (
           messages.map((msg, i) => {
             const isOutbound = msg.direction === 'outbound';
+            const isPersonal = msg.source === 'philip_persoonlijk';
             return (
               <div
                 key={`${msg.timestamp}-${i}`}
@@ -65,12 +66,19 @@ export function ChatTab({ slug, telefoon }: ChatTabProps) {
               >
                 <div
                   className={`max-w-[70%] rounded-lg px-3 py-2 ${
-                    isOutbound
-                      ? 'bg-[#DCF8C6] rounded-br-none'
-                      : 'bg-white rounded-bl-none shadow-sm'
+                    isPersonal
+                      ? 'bg-amber-100 rounded-br-none border border-amber-300'
+                      : isOutbound
+                        ? 'bg-[#DCF8C6] rounded-br-none'
+                        : 'bg-white rounded-bl-none shadow-sm'
                   }`}
                 >
-                  {!isOutbound && (
+                  {isPersonal && (
+                    <p className="text-xs font-medium text-amber-700 mb-0.5">
+                      Philip (persoonlijk)
+                    </p>
+                  )}
+                  {!isOutbound && !isPersonal && (
                     <p className="text-xs font-medium text-indigo-600 mb-0.5">
                       {msg.sender}
                     </p>

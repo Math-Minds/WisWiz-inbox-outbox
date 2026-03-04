@@ -247,6 +247,7 @@ export interface InfluencerMessage {
   sender: string;
   text: string;
   direction: 'inbound' | 'outbound';
+  source?: string; // e.g. 'philip_persoonlijk' — identifies which WhatsApp account
 }
 
 export interface InfluencerSummary {

@@ -35,31 +35,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dir = path.dirname(__filename);
 
 const GCS_BUCKET = process.env.GCS_BUCKET || '';
-const GCS_AUTH_PREFIX = 'whatsapp-auth';
 
-// In cloud mode, use /tmp (writable in Cloud Run). Locally, use the sync dir.
-const AUTH_DIR = GCS_BUCKET
-  ? '/tmp/baileys_auth'
-  : path.join(__dir, '.baileys_auth');
+function getAuthConfig(accountName?: string) {
+  const suffix = accountName ? `-${accountName}` : '';
+  return {
+    gcsPrefix: `whatsapp-auth${suffix}`,
+    localDir: GCS_BUCKET
+      ? `/tmp/baileys_auth${suffix}`
+      : path.join(__dir, `.baileys_auth${suffix}`),
+  };
+}
 
 const logger = P({ level: 'warn' });
 
 /* ── GCS Auth Sync ── */
 
-async function downloadAuthFromGcs(): Promise<void> {
+async function downloadAuthFromGcs(authDir: string, gcsPrefix: string): Promise<void> {
   if (!GCS_BUCKET) return;
 
-  console.log('📥 Auth state downloaden van GCS...');
+  console.log(`📥 Auth state downloaden van GCS (${gcsPrefix})...`);
   const storage = new Storage();
-  const [files] = await storage.bucket(GCS_BUCKET).getFiles({ prefix: `${GCS_AUTH_PREFIX}/` });
+  const [files] = await storage.bucket(GCS_BUCKET).getFiles({ prefix: `${gcsPrefix}/` });
 
-  await fs.mkdir(AUTH_DIR, { recursive: true });
+  await fs.mkdir(authDir, { recursive: true });
   let count = 0;
 
   for (const file of files) {
-    const relativePath = file.name.slice(`${GCS_AUTH_PREFIX}/`.length);
+    const relativePath = file.name.slice(`${gcsPrefix}/`.length);
     if (!relativePath) continue;
-    const localPath = path.join(AUTH_DIR, relativePath);
+    const localPath = path.join(authDir, relativePath);
     await fs.mkdir(path.dirname(localPath), { recursive: true });
     await file.download({ destination: localPath });
     count++;
@@ -68,30 +72,31 @@ async function downloadAuthFromGcs(): Promise<void> {
   console.log(`   ${count} auth bestanden gedownload.`);
 }
 
-let syncTimer: ReturnType<typeof setTimeout> | null = null;
+const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-async function uploadAuthToGcs(): Promise<void> {
+function uploadAuthToGcs(authDir: string, gcsPrefix: string): void {
   if (!GCS_BUCKET) return;
 
-  // Debounce: wait 2 seconds before uploading to batch rapid changes
-  if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
+  const existing = syncTimers.get(gcsPrefix);
+  if (existing) clearTimeout(existing);
+
+  syncTimers.set(gcsPrefix, setTimeout(async () => {
     try {
       const storage = new Storage();
       const bucket = storage.bucket(GCS_BUCKET);
-      const entries = await fs.readdir(AUTH_DIR);
+      const entries = await fs.readdir(authDir);
 
       for (const entry of entries) {
-        const localPath = path.join(AUTH_DIR, entry);
+        const localPath = path.join(authDir, entry);
         const stat = await fs.stat(localPath);
         if (stat.isFile()) {
-          await bucket.upload(localPath, { destination: `${GCS_AUTH_PREFIX}/${entry}` });
+          await bucket.upload(localPath, { destination: `${gcsPrefix}/${entry}` });
         }
       }
     } catch (err) {
       console.error('⚠️  Auth sync naar GCS mislukt:', err);
     }
-  }, 2000);
+  }, 2000));
 }
 
 /* ── Connection Management ── */
@@ -100,24 +105,36 @@ export interface WhatsAppHandlers {
   onConnected: (sock: WASocket) => void;
 }
 
+export interface WhatsAppOptions {
+  /** Account name for separate auth state (e.g., 'philip'). Omit for default (WisWiz). */
+  accountName?: string;
+  /** Label for logging */
+  label?: string;
+  /** Whether to write sync status (only for primary account) */
+  writeStatus?: boolean;
+}
+
 /**
  * Start a persistent WhatsApp connection that auto-reconnects.
  * Calls handlers.onConnected(sock) on each successful connection,
  * so message listeners can be (re)registered on the current socket.
  */
-export async function startWhatsApp(handlers: WhatsAppHandlers): Promise<void> {
-  await writeStatus({ status: 'connecting' });
-  await downloadAuthFromGcs();
+export async function startWhatsApp(handlers: WhatsAppHandlers, options?: WhatsAppOptions): Promise<void> {
+  const { accountName, label = 'WhatsApp', writeStatus: shouldWriteStatus = true } = options || {};
+  const { gcsPrefix, localDir: authDir } = getAuthConfig(accountName);
+
+  if (shouldWriteStatus) await writeStatus({ status: 'connecting' });
+  await downloadAuthFromGcs(authDir, gcsPrefix);
 
   let retries = 0;
   const MAX_RETRIES = 10;
 
   async function connect() {
-    const { state, saveCreds: originalSaveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { state, saveCreds: originalSaveCreds } = await useMultiFileAuthState(authDir);
 
     const saveCreds = async () => {
       await originalSaveCreds();
-      uploadAuthToGcs(); // fire-and-forget, debounced
+      uploadAuthToGcs(authDir, gcsPrefix); // fire-and-forget, debounced
     };
 
     const { version } = await fetchLatestBaileysVersion();
@@ -143,11 +160,10 @@ export async function startWhatsApp(handlers: WhatsAppHandlers): Promise<void> {
 
       if (qr) {
         const dataUrl = await QRCode.toDataURL(qr, { width: 256, margin: 2 });
-        console.log('\n📱 QR code ontvangen!');
-        console.log('   → Open WhatsApp Business App');
-        console.log('   → Gekoppelde apparaten → Apparaat koppelen');
+        console.log(`\n📱 [${label}] QR code ontvangen!`);
+        console.log('   → Open WhatsApp → Gekoppelde apparaten → Apparaat koppelen');
         console.log('   → Scan de QR code op localhost:3001/sync\n');
-        await writeStatus({ status: 'qr', qrDataUrl: dataUrl });
+        if (shouldWriteStatus) await writeStatus({ status: 'qr', qrDataUrl: dataUrl });
       }
 
       if (connection === 'close') {
@@ -155,32 +171,33 @@ export async function startWhatsApp(handlers: WhatsAppHandlers): Promise<void> {
         const reason = (lastDisconnect?.error as Boom)?.message || 'unknown';
 
         if (statusCode === DisconnectReason.loggedOut) {
-          console.error('❌ Uitgelogd. Verwijder auth data en scan opnieuw.');
-          await writeStatus({ status: 'error', error: 'Uitgelogd. Herstart nodig.' });
-          process.exit(1);
+          console.error(`❌ [${label}] Uitgelogd. Verwijder auth data en scan opnieuw.`);
+          if (shouldWriteStatus) await writeStatus({ status: 'error', error: `${label}: Uitgelogd.` });
+          // Only exit for primary account
+          if (!accountName) process.exit(1);
         } else if (reason.includes('QR refs')) {
-          console.error('❌ QR code verlopen.');
-          await writeStatus({ status: 'error', error: 'QR code verlopen.' });
-          process.exit(1);
+          console.error(`❌ [${label}] QR code verlopen.`);
+          if (shouldWriteStatus) await writeStatus({ status: 'error', error: `${label}: QR verlopen.` });
+          if (!accountName) process.exit(1);
         } else {
           retries++;
           if (retries <= MAX_RETRIES) {
-            const delay = Math.min(2000 * retries, 30000); // exponential backoff, max 30s
-            console.log(`🔄 Herverbinden in ${delay / 1000}s... (poging ${retries}/${MAX_RETRIES})`);
-            await writeStatus({ status: 'connecting' });
+            const delay = Math.min(2000 * retries, 30000);
+            console.log(`🔄 [${label}] Herverbinden in ${delay / 1000}s... (poging ${retries}/${MAX_RETRIES})`);
+            if (shouldWriteStatus) await writeStatus({ status: 'connecting' });
             setTimeout(connect, delay);
           } else {
-            console.error('❌ Maximaal aantal pogingen bereikt. Herstart container.');
-            await writeStatus({ status: 'error', error: 'Verbinding mislukt na meerdere pogingen.' });
-            process.exit(1);
+            console.error(`❌ [${label}] Maximaal aantal pogingen bereikt.`);
+            if (shouldWriteStatus) await writeStatus({ status: 'error', error: `${label}: Verbinding mislukt.` });
+            if (!accountName) process.exit(1);
           }
         }
       }
 
       if (connection === 'open') {
-        retries = 0; // Reset on successful connection
-        console.log('✅ WhatsApp verbonden');
-        await writeStatus({ status: 'ready' });
+        retries = 0;
+        console.log(`✅ [${label}] WhatsApp verbonden`);
+        if (shouldWriteStatus) await writeStatus({ status: 'ready' });
         handlers.onConnected(sock);
       }
     });
