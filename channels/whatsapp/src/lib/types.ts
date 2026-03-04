@@ -226,3 +226,101 @@ export interface WebhookError {
   message: string;
   error_data?: { details: string };
 }
+
+// ============================================================================
+// INFLUENCER CRM TYPES
+// ============================================================================
+
+export interface Profile {
+  tiktok: string;
+  naam: string;
+  phones: string[];
+  emails: string[];
+  kanalen: string[];
+  eerste_contact: string;
+  notities: string | null;
+  archived?: boolean;
+}
+
+export interface InfluencerMessage {
+  timestamp: string;
+  sender: string;
+  text: string;
+  direction: 'inbound' | 'outbound';
+}
+
+export interface InfluencerSummary {
+  slug: string;
+  naam: string;
+  tiktok: string | null;
+  kanalen: string[];
+  dealStatus: DealStatus | null;
+  laatsteActiviteit: string | null;
+  archived: boolean;
+}
+
+export type DealStatus =
+  | 'prospect'
+  | 'contacted'
+  | 'negotiating'
+  | 'agreed'
+  | 'content_creating'
+  | 'content_review'
+  | 'published'
+  | 'completed'
+  | 'declined';
+
+export interface Deal {
+  status: DealStatus;
+  afspraken: {
+    vergoeding: number | null;
+    vergoeding_type: 'per_video' | 'vast' | null;
+    aantal_videos: number | null;
+    prijs_per_1k_views: number | null;
+    platform: string | null;
+    deadline: string | null;
+    notities: string | null;
+  };
+  betalingen: Payment[];
+  tijdlijn: TimelineEvent[];
+}
+
+export interface Payment {
+  id: string;
+  bedrag: number;
+  status: 'openstaand' | 'betaald';
+  datum: string;
+  methode: 'tikkie' | 'bank' | 'paypal' | 'anders';
+  referentie: string | null;
+  notitie: string | null;
+}
+
+export interface TimelineEvent {
+  timestamp: string;
+  type: 'status_change' | 'betaling' | 'notitie';
+  to?: DealStatus;
+  tekst?: string;
+}
+
+export type VideoStatus = 'concept' | 'in_review' | 'gepost';
+
+export interface Video {
+  id: string;
+  platform: 'tiktok' | 'instagram' | 'youtube';
+  url: string | null;
+  titel: string | null;
+  datum_gepost: string | null;
+  status: VideoStatus;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  notitie: string | null;
+}
+
+export interface EmailThread {
+  filename: string;
+  subject: string;
+  participants: string[];
+  status: string;
+  content: string;
+}

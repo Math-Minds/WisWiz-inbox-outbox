@@ -50,5 +50,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# WhatsApp Sync
+sync/.wwebjs_auth/
+sync/.baileys_auth/
+sync/sync-state.json
+sync/sync-status.json
+sync.log
+
 # Misc
 *.pem

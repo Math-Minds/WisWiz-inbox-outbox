@@ -11,7 +11,7 @@ export function StatusBar() {
 
   async function checkStatus() {
     try {
-      const res = await fetch('/api/contacts');
+      const res = await fetch('/api/influencers');
       setStatus(res.ok ? 'connected' : 'disconnected');
     } catch {
       setStatus('disconnected');
@@ -19,13 +19,12 @@ export function StatusBar() {
   }
 
   return (
-    <div className="bg-[#128C7E] text-white px-4 py-2 flex items-center justify-between text-sm">
+    <div className="bg-indigo-700 text-white px-4 py-2 flex items-center justify-between text-sm">
       <div className="flex items-center gap-2">
-        <span>WisWiz WhatsApp Manager</span>
+        <span className="font-semibold">WisWiz Influencer CRM</span>
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Status indicator */}
         <div className="flex items-center gap-2">
           <span
             className={`w-2 h-2 rounded-full ${
@@ -36,22 +35,12 @@ export function StatusBar() {
                 : 'bg-red-400'
             }`}
           />
-          <span>
+          <span className="text-indigo-200">
             {status === 'connected' && 'Verbonden'}
             {status === 'checking' && 'Verbinden...'}
             {status === 'disconnected' && 'Niet verbonden'}
           </span>
         </div>
-
-        {/* Help link */}
-        <a
-          href="https://developers.facebook.com/docs/whatsapp/cloud-api"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-white/80 hover:text-white"
-        >
-          API Docs
-        </a>
       </div>
     </div>
   );

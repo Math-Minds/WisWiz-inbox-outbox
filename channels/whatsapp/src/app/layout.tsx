@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'WisWiz WhatsApp',
-  description: 'WhatsApp Business inbox/outbox manager',
+  title: 'WisWiz Influencer CRM',
+  description: 'Influencer management, deal tracking, en communicatie',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="nl">
-      <body className="bg-gray-100 min-h-screen">{children}</body>
+      <body className="bg-gray-50 min-h-screen">{children}</body>
     </html>
   );
 }

@@ -184,8 +184,10 @@ export async function appendMessage(
   // Update contact's last contact time
   await updateContact(phone, {
     metadata: {
+      firstContact: message.ts,
       lastContact: message.ts,
-      messageCount: 0, // Will be incremented below
+      messageCount: 0,
+      tags: [],
     },
   });
 }

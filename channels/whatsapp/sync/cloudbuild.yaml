@@ -1,0 +1,61 @@
+steps:
+  # Build the Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--platform=linux/amd64"
+      - "-f"
+      - "sync/Dockerfile"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${_VERSION}"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest"
+      - "."
+
+  # Push the image to Artifact Registry
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}"
+
+  # Deploy to Cloud Run (always-on worker)
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        echo "Deploying ${_CLOUD_RUN_SERVICE}..."
+        gcloud run deploy "${_CLOUD_RUN_SERVICE}" \
+          --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${_VERSION}" \
+          --region="${_REGION}" \
+          --no-cpu-throttling \
+          --min-instances=1 \
+          --max-instances=1 \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=3600 \
+          --set-env-vars="GCS_BUCKET=${_GCS_BUCKET},GCS_PREFIX=influencers,GMAIL_CLIENT_ID=${_GMAIL_CLIENT_ID},GMAIL_CLIENT_SECRET=${_GMAIL_CLIENT_SECRET},SCRAPECREATORS_API_KEY=${_SCRAPECREATORS_API_KEY}" \
+          --no-allow-unauthenticated
+
+substitutions:
+  _REGION: europe-west4
+  _REPO: testmind-docker-repo
+  _IMAGE_NAME: wiswiz-whatsapp-sync
+  _CLOUD_RUN_SERVICE: wiswiz-whatsapp-sync
+  _VERSION: latest
+  _GCS_BUCKET: testmind-influencer-data
+  _GMAIL_CLIENT_ID: ''
+  _GMAIL_CLIENT_SECRET: ''
+  _SCRAPECREATORS_API_KEY: ''
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${_VERSION}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest"
+
+tags:
+  - wiswiz-whatsapp-sync

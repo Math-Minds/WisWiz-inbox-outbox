@@ -12,7 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { whatsappApi } from '@/lib/whatsapp-api';
 import { appendMessage, createOutboxMessage } from '@/lib/file-store';
-import type { Message } from '@/lib/types';
+import { getInfluencerByPhone, appendWhatsAppMessage } from '@/lib/influencer-store';
+import type { Message, InfluencerMessage } from '@/lib/types';
 
 interface SendRequest {
   to: string;
@@ -84,6 +85,18 @@ export async function POST(request: NextRequest) {
     }
 
     await appendMessage(to, message);
+
+    // Sync outbound message to influencer folder
+    const influencer = await getInfluencerByPhone(to);
+    if (influencer) {
+      const influencerMsg: InfluencerMessage = {
+        timestamp: message.ts,
+        sender: 'WisWiz',
+        text: data.body,
+        direction: 'outbound',
+      };
+      await appendWhatsAppMessage(influencer.slug, influencerMsg);
+    }
 
     return NextResponse.json({
       success: true,

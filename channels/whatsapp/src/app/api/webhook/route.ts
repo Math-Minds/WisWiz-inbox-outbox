@@ -13,10 +13,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import {
   updateContact,
-  appendMessage,
   saveMedia,
 } from '@/lib/file-store';
 import { whatsappApi } from '@/lib/whatsapp-api';
+import { syncToInfluencer } from '@/lib/influencer-sync';
 import type {
   WebhookPayload,
   WebhookMessage,
@@ -121,7 +121,10 @@ async function handleIncomingMessage(
       pushName: profileName,
     },
     metadata: {
+      firstContact: timestamp,
       lastContact: timestamp,
+      messageCount: 0,
+      tags: [],
     },
   });
 
@@ -206,8 +209,10 @@ async function handleIncomingMessage(
     };
   }
 
-  // Save to file system
-  await appendMessage(phone, message);
+  // Sync to influencer folder (fire-and-forget, mag niet webhook blokkeren)
+  syncToInfluencer(phone, profileName, message.body, timestamp).catch(err =>
+    console.error('[Influencer Sync] Error:', err)
+  );
 
   // Mark as read (optional - can be disabled)
   await whatsappApi.markAsRead(webhookMsg.id);
